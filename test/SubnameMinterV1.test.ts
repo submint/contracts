@@ -76,6 +76,9 @@ interface Price {
   lifetime: BigNumber[]
 }
 
+// CANNOT_BURN_FUSES CANNOT_CREATE_SUBDOMAIN
+const DEFAULT_SUBNAME_FUSESD = FUSES.PARENT_CANNOT_CONTROL | FUSES.CANNOT_UNWRAP | 64;
+
 describe("SubnameMinterV1", function () {
 
   async function registerName(
@@ -149,7 +152,8 @@ describe("SubnameMinterV1", function () {
       nodeL2Domain,
       recipient,
       prices,
-      eligibliy
+      eligibliy,
+      DEFAULT_SUBNAME_FUSESD
     )
     await NameWrapper.connect(await ethers.getSigner(account)).setApprovalForAll(controller.address, true)
 
@@ -471,7 +475,8 @@ describe("SubnameMinterV1", function () {
         {
           tokens: [],
           amounts: []
-        }
+        },
+        DEFAULT_SUBNAME_FUSESD
       )).to.be.rejectedWith(/out-of-bounds/)
     })
 
@@ -506,7 +511,8 @@ describe("SubnameMinterV1", function () {
         {
           tokens: [],
           amounts: []
-        }
+        },
+        DEFAULT_SUBNAME_FUSESD
       )).to.rejectedWith(/NotEnsOwner/)
     })
 

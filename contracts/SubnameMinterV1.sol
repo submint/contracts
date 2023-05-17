@@ -61,14 +61,18 @@ struct Reward {
     uint32 rate;
 }
 
+struct MintSetting {
+    uint32 subnameFuses;
+    Eligibilities eligibilities;
+    Prices prices;
+    address recipient;
+}
+
 contract SubnameMinterV1 is Ownable {
     using Address for address;
     using StringUtils for *;
 
-    // node -> length -> uint -> price
-    mapping(bytes32 => Prices) prices;
-    mapping(bytes32 => address) recipients;
-    mapping(bytes32 => Eligibilities) eligibilities;
+    mapping(bytes32 => MintSetting) mintSettings;
 
     string public constant name = "SubnameMinterV1";
     uint64 public constant GRACE_PERIOD = 90 days;
@@ -81,14 +85,6 @@ contract SubnameMinterV1 is Ownable {
     AggregatorV3Interface public priceFeed;
     INameWrapper public nameWrapper;
     PublicResolver public publicResolver;
-
-    uint32 public baseFuses =
-        PARENT_CANNOT_CONTROL |
-            CANNOT_UNWRAP |
-            // CANNOT_SET_RESOLVER |
-            // CANNOT_SET_TTL |
-            CANNOT_BURN_FUSES |
-            64;
 
     event SubnameMinted(bytes32 parentNode, string name, uint256 expiry);
     event SubnameSetUp(bytes32 parentNode, Prices prices, address recipient);
@@ -119,10 +115,6 @@ contract SubnameMinterV1 is Ownable {
         nameWrapper = INameWrapper(newWrapperAddress);
     }
 
-    function setBaseFuses(uint32 fuses) public onlyOwner {
-        baseFuses = fuses;
-    }
-
     function setResolver(address resolverAddress) public onlyOwner {
         publicResolver = PublicResolver(resolverAddress);
     }
@@ -143,7 +135,11 @@ contract SubnameMinterV1 is Ownable {
     function settingsOf(
         bytes32 node
     ) public view returns (Prices memory, address, Eligibilities memory) {
-        return (prices[node], recipients[node], eligibilities[node]);
+        return (
+            mintSettings[node].prices,
+            mintSettings[node].recipient,
+            mintSettings[node].eligibilities
+        );
     }
 
     function available(bytes32 node) public view returns (bool, uint64) {
@@ -173,7 +169,7 @@ contract SubnameMinterV1 is Ownable {
         if (nameLength == 0) {
             revert SubameIsEmpty();
         }
-        priceMatrix = prices[parentNode];
+        priceMatrix = mintSettings[parentNode].prices;
         if (priceMatrix.monthly.length == 0) {
             revert PriceNotSet();
         }
@@ -208,7 +204,8 @@ contract SubnameMinterV1 is Ownable {
         address owner,
         string memory subname
     ) public view returns (bool) {
-        Eligibilities memory subnameEligibilities = eligibilities[parentNode];
+        Eligibilities memory subnameEligibilities = mintSettings[parentNode]
+            .eligibilities;
         if (subnameEligibilities.tokens.length == 0) {
             return true;
         }
@@ -281,7 +278,8 @@ contract SubnameMinterV1 is Ownable {
         bytes32 nodeL2Domain,
         address recipient,
         Prices calldata _prices,
-        Eligibilities calldata _eligibilities
+        Eligibilities calldata _eligibilities,
+        uint32 _subnameFuses
     ) public {
         // create
         if (_eligibilities.tokens.length != _eligibilities.amounts.length) {
@@ -301,9 +299,10 @@ contract SubnameMinterV1 is Ownable {
         ) {
             revert InvalidPrices();
         }
-        prices[nodeL2Domain] = _prices;
-        recipients[nodeL2Domain] = recipient;
-        eligibilities[nodeL2Domain] = _eligibilities;
+        mintSettings[nodeL2Domain].prices = _prices;
+        mintSettings[nodeL2Domain].recipient = recipient;
+        mintSettings[nodeL2Domain].eligibilities = _eligibilities;
+        mintSettings[nodeL2Domain].subnameFuses = _subnameFuses;
 
         emit SubnameSetUp(nodeL2Domain, _prices, recipient);
     }
@@ -338,13 +337,14 @@ contract SubnameMinterV1 is Ownable {
         );
         _checkPrice(parentNode, _name, duration);
         _transferFees(parentNode, rewards);
+        uint32 subnameFuses = mintSettings[parentNode].subnameFuses;
         nameWrapper.setSubnodeRecord(
             parentNode,
             _name,
             owner,
             address(publicResolver),
             0,
-            baseFuses | CANNOT_CREATE_SUBDOMAIN,
+            subnameFuses,
             expectExpiry
         );
         emit SubnameMinted(parentNode, name, expectExpiry);
@@ -471,7 +471,9 @@ contract SubnameMinterV1 is Ownable {
         bytes32 parentNode,
         Reward[] memory rewards
     ) private {
-        address payable feeRecipient = payable(recipients[parentNode]);
+        address payable feeRecipient = payable(
+            mintSettings[parentNode].recipient
+        );
         if (feeRecipient == address(0)) {
             revert FeesTransferFailed("Fee recipient is empty");
         }
