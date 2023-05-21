@@ -134,12 +134,8 @@ contract SubnameMinterV1 is Ownable {
 
     function settingsOf(
         bytes32 node
-    ) public view returns (Prices memory, address, Eligibilities memory) {
-        return (
-            mintSettings[node].prices,
-            mintSettings[node].recipient,
-            mintSettings[node].eligibilities
-        );
+    ) public view returns (MintSetting memory) {
+        return mintSettings[node];
     }
 
     function available(bytes32 node) public view returns (bool, uint64) {
